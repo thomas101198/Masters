@@ -3,6 +3,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from pandas.io import sql
 import mysql.connector
+from numpy import NaN
+import requests
 
 mydb = mysql.connector.connect(
   host = "sql8.freesqldatabase.com",
@@ -13,6 +15,37 @@ mydb = mysql.connector.connect(
 
 mycursor = mydb.cursor()
 driver = webdriver.Chrome()
+
+X_API_KEY = "da2-gsrx5bibzbb4njvhl7t37wqyl4"
+
+YEAR = 20230
+PAST_RESULTS_ID = "R2014014"
+
+# prepare the payload
+payload = {
+    "operationName": "TournamentPastResults",
+    "variables": {
+        "tournamentPastResultsId": PAST_RESULTS_ID,
+        "year": YEAR
+    },
+    "query": "query TournamentPastResults($tournamentPastResultsId: ID!, $year: Int) {\n  tournamentPastResults(id: $tournamentPastResultsId, year: $year) {\n    id\n    players {\n      id\n      position\n      player {\n        id\n        firstName\n        lastName\n        shortName\n        displayName\n        abbreviations\n        abbreviationsAccessibilityText\n        amateur\n        country\n        countryFlag\n        lineColor\n      }\n      rounds {\n        score\n        parRelativeScore\n      }\n      additionalData\n      total\n      parRelativeScore\n    }\n    rounds\n    additionalDataHeaders\n    availableSeasons {\n      year\n      displaySeason\n    }\n    winner {\n      id\n      firstName\n      lastName\n      totalStrokes\n      totalScore\n      countryFlag\n      countryName\n      purse\n      points\n    }\n  }\n}"
+}
+
+# post the request
+page = requests.post("https://orchestrator.pgatour.com/graphql", json=payload, headers={"x-api-key": X_API_KEY})
+
+# check for status code
+page.raise_for_status()
+
+# get the data
+data = page.json()["data"]["tournamentPastResults"]["players"]
+
+
+for i in data:
+  print(i["player"]["displayName"])
+  print(i["player"]["country"])
+
+quit()
 
 def load_data(URL,y):
   driver.get(URL)
