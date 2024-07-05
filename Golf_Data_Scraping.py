@@ -8,9 +8,9 @@ import requests
 
 mydb = mysql.connector.connect(
   host = "sql8.freesqldatabase.com",
-  user = "sql8705870",
-  password = "dHBiujZhFa",
-  database = "sql8705870"
+  user = "sql8718181",
+  password = "xyvp7AygTF",
+  database = "sql8718181"
 )
 
 mycursor = mydb.cursor()
