@@ -8,9 +8,9 @@ import requests
 
 mydb = mysql.connector.connect(
   host = "sql8.freesqldatabase.com",
-  user = "sql8705870",
-  password = "dHBiujZhFa",
-  database = "sql8705870"
+  user = "sql8718181",
+  password = "xyvp7AygTF",
+  database = "sql8718181"
 )
 
 mycursor = mydb.cursor()
@@ -40,8 +40,17 @@ page.raise_for_status()
 # get the data
 data = page.json()["data"]["tournamentPastResults"]["players"]
 
+def load_data(URL):
+  print(URL)
+  driver.get(URL)
 
 for i in data:
+  c = i["player"]["displayName"].split(" ", 1)[0]
+  b = i["player"]["displayName"].split(" ", 1)[1]
+  a = i["player"]["id"]
+  url = f"https://www.pgatour.com/player/{a}/{b}-{c}/bio" 
+  load_data(url)
+  quit()
   print(i["player"]["displayName"])
   print(i["player"]["country"])
 
