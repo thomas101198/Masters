@@ -23,7 +23,6 @@ X_API_KEY = "da2-gsrx5bibzbb4njvhl7t37wqyl4"
 YEAR = 20230
 PAST_RESULTS_ID = "R2014014"
 
-# prepare the payload
 payload = {
     "operationName": "TournamentPastResults",
     "variables": {
@@ -33,51 +32,39 @@ payload = {
     "query": "query TournamentPastResults($tournamentPastResultsId: ID!, $year: Int) {\n  tournamentPastResults(id: $tournamentPastResultsId, year: $year) {\n    id\n    players {\n      id\n      position\n      player {\n        id\n        firstName\n        lastName\n        shortName\n        displayName\n        abbreviations\n        abbreviationsAccessibilityText\n        amateur\n        country\n        countryFlag\n        lineColor\n      }\n      rounds {\n        score\n        parRelativeScore\n      }\n      additionalData\n      total\n      parRelativeScore\n    }\n    rounds\n    additionalDataHeaders\n    availableSeasons {\n      year\n      displaySeason\n    }\n    winner {\n      id\n      firstName\n      lastName\n      totalStrokes\n      totalScore\n      countryFlag\n      countryName\n      purse\n      points\n    }\n  }\n}"
 }
 
-# post the request
 page = requests.post("https://orchestrator.pgatour.com/graphql", json=payload, headers={"x-api-key": X_API_KEY})
-
-# check for status code
 page.raise_for_status()
-
-# get the data
 data = page.json()["data"]["tournamentPastResults"]["players"]
 
-
-payload1 = {"operationName":"Player",
+def load_data(id):
+  payload1 = {"operationName":"Player",
             "variables":{
-            "playerId":"46970"},
+            "playerId":id},
             "query":"query Player($playerId: ID!) {\n  player(id: $playerId) {\n    bioLink\n    countryFlag\n    country\n    displayName\n    firstName\n    id\n    lastName\n    playerBio {\n      deceased\n      deceasedDate\n      age\n      birthplace {\n        countryCode\n        country\n        city\n        state\n        stateCode\n      }\n      born\n      bornAccessibilityText\n      degree\n      careerEarnings\n      family\n      graduationYear\n      heightImperial\n      heightImperialAccessibilityText\n      heightMeters\n      overview\n      personal\n      playsFrom {\n        city\n        country\n        countryCode\n        state\n        stateCode\n      }\n      pronunciation\n      residence {\n        city\n        country\n        state\n        countryCode\n        stateCode\n      }\n      school\n      social {\n        type\n        url\n      }\n      turnedPro\n      weightImperial\n      weightKilograms\n      websiteURL\n      exemptions {\n        tour\n        description\n        expirationDate\n      }\n    }\n    rank {\n      rank\n      statName\n    }\n    owgr\n  }\n}"}
-# post the request
-page1 = requests.post("https://orchestrator.pgatour.com/graphql", json=payload1, headers={"x-api-key": X_API_KEY})
 
-# check for status code
-page1.raise_for_status()
+  page1 = requests.post("https://orchestrator.pgatour.com/graphql", json=payload1, headers={"x-api-key": X_API_KEY})
+  page1.raise_for_status()
+  data1 = page1.json()["data"]["player"]["playerBio"]
 
-# get the data
-data1 = page1.json()["data"]["player"]["playerBio"]
+  birthplace = data1["birthplace"]["countryCode"]
+  height = data1["heightMeters"]
+  if data1["born"] is not None:
+    dob = datetime.datetime.strptime(data1["born"],'%b %d, %Y').strftime('%Y-%m-%d')
+  else:
+    dob = None
+  print(birthplace,height,dob)
+  extra_info = {birthplace,height,dob}
+  return extra_info
 
-birthplace = data1["birthplace"]["countryCode"]
-height = data1["heightMeters"]
-dob = datetime.datetime.strptime(data1["born"],'%b %d, %Y').strftime('%Y-%m-%d')
-
-print(birthplace, height,dob)
-quit()
-def load_data(URL):
-  driver.implicitly_wait(10)
-  driver.get(URL)
-  dob = driver.find_element(By.ID,"tabs-:rf:--tabpanel-6")
-  print(dob)
 
 for i in data:
   c = i["player"]["displayName"].split(" ", 1)[0]
   b = i["player"]["displayName"].split(" ", 1)[1]
   a = i["player"]["id"]
-  url = f"https://www.pgatour.com/player/{a}/{b}-{c}/bio" 
-  load_data(url)
-  print(i["player"]["displayName"])
-  print(i["player"]["country"])
+  extra_info = load_data(a)
+  print(c,b,a,extra_info)
 
-
+quit()
 def load_data(URL,y):
   driver.get(URL)
   table = driver.find_element(By.CSS_SELECTOR, "table.chakra-table")
