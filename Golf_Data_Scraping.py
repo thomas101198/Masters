@@ -1,10 +1,12 @@
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium import webdriver
 from pandas.io import sql
 import mysql.connector
 from numpy import NaN
 import requests
+import datetime
 
 mydb = mysql.connector.connect(
   host = "sql8.freesqldatabase.com",
@@ -40,9 +42,31 @@ page.raise_for_status()
 # get the data
 data = page.json()["data"]["tournamentPastResults"]["players"]
 
+
+payload1 = {"operationName":"Player",
+            "variables":{
+            "playerId":"46970"},
+            "query":"query Player($playerId: ID!) {\n  player(id: $playerId) {\n    bioLink\n    countryFlag\n    country\n    displayName\n    firstName\n    id\n    lastName\n    playerBio {\n      deceased\n      deceasedDate\n      age\n      birthplace {\n        countryCode\n        country\n        city\n        state\n        stateCode\n      }\n      born\n      bornAccessibilityText\n      degree\n      careerEarnings\n      family\n      graduationYear\n      heightImperial\n      heightImperialAccessibilityText\n      heightMeters\n      overview\n      personal\n      playsFrom {\n        city\n        country\n        countryCode\n        state\n        stateCode\n      }\n      pronunciation\n      residence {\n        city\n        country\n        state\n        countryCode\n        stateCode\n      }\n      school\n      social {\n        type\n        url\n      }\n      turnedPro\n      weightImperial\n      weightKilograms\n      websiteURL\n      exemptions {\n        tour\n        description\n        expirationDate\n      }\n    }\n    rank {\n      rank\n      statName\n    }\n    owgr\n  }\n}"}
+# post the request
+page1 = requests.post("https://orchestrator.pgatour.com/graphql", json=payload1, headers={"x-api-key": X_API_KEY})
+
+# check for status code
+page1.raise_for_status()
+
+# get the data
+data1 = page1.json()["data"]["player"]["playerBio"]
+
+birthplace = data1["birthplace"]["countryCode"]
+height = data1["heightMeters"]
+dob = datetime.datetime.strptime(data1["born"],'%b %d, %Y').strftime('%Y-%m-%d')
+
+print(birthplace, height,dob)
+quit()
 def load_data(URL):
-  print(URL)
+  driver.implicitly_wait(10)
   driver.get(URL)
+  dob = driver.find_element(By.ID,"tabs-:rf:--tabpanel-6")
+  print(dob)
 
 for i in data:
   c = i["player"]["displayName"].split(" ", 1)[0]
@@ -50,11 +74,9 @@ for i in data:
   a = i["player"]["id"]
   url = f"https://www.pgatour.com/player/{a}/{b}-{c}/bio" 
   load_data(url)
-  quit()
   print(i["player"]["displayName"])
   print(i["player"]["country"])
 
-quit()
 
 def load_data(URL,y):
   driver.get(URL)
