@@ -1,121 +1,144 @@
 import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from pandas.io import sql
-import mysql.connector
-from numpy import NaN
 import requests
+from bs4 import BeautifulSoup
+import json
+import time
 
-mydb = mysql.connector.connect(
-  host = "sql8.freesqldatabase.com",
-  user = "sql8718181",
-  password = "xyvp7AygTF",
-  database = "sql8718181"
-)
-
-mycursor = mydb.cursor()
-driver = webdriver.Chrome()
-
+# -----------------------------
+# CONFIG
+# -----------------------------
 X_API_KEY = "da2-gsrx5bibzbb4njvhl7t37wqyl4"
 
 YEAR = 20230
 PAST_RESULTS_ID = "R2014014"
 
-# prepare the payload
+# -----------------------------
+# STEP 1: GET PLAYER IDS (GRAPHQL)
+# -----------------------------
 payload = {
     "operationName": "TournamentPastResults",
     "variables": {
         "tournamentPastResultsId": PAST_RESULTS_ID,
         "year": YEAR
     },
-    "query": "query TournamentPastResults($tournamentPastResultsId: ID!, $year: Int) {\n  tournamentPastResults(id: $tournamentPastResultsId, year: $year) {\n    id\n    players {\n      id\n      position\n      player {\n        id\n        firstName\n        lastName\n        shortName\n        displayName\n        abbreviations\n        abbreviationsAccessibilityText\n        amateur\n        country\n        countryFlag\n        lineColor\n      }\n      rounds {\n        score\n        parRelativeScore\n      }\n      additionalData\n      total\n      parRelativeScore\n    }\n    rounds\n    additionalDataHeaders\n    availableSeasons {\n      year\n      displaySeason\n    }\n    winner {\n      id\n      firstName\n      lastName\n      totalStrokes\n      totalScore\n      countryFlag\n      countryName\n      purse\n      points\n    }\n  }\n}"
+    "query": """
+    query TournamentPastResults($tournamentPastResultsId: ID!, $year: Int) {
+      tournamentPastResults(id: $tournamentPastResultsId, year: $year) {
+        players {
+          player {
+            id
+          }
+        }
+      }
+    }
+    """
 }
 
-# post the request
-page = requests.post("https://orchestrator.pgatour.com/graphql", json=payload, headers={"x-api-key": X_API_KEY})
+page = requests.post(
+    "https://orchestrator.pgatour.com/graphql",
+    json=payload,
+    headers={"x-api-key": X_API_KEY}
+)
 
-# check for status code
 page.raise_for_status()
 
-# get the data
 data = page.json()["data"]["tournamentPastResults"]["players"]
 
-def load_data(URL):
-  print(URL)
-  driver.get(URL)
+player_ids = sorted({
+    entry["player"]["id"]
+    for entry in data
+})
 
-for i in data:
-  c = i["player"]["displayName"].split(" ", 1)[0]
-  b = i["player"]["displayName"].split(" ", 1)[1]
-  a = i["player"]["id"]
-  url = f"https://www.pgatour.com/player/{a}/{b}-{c}/bio" 
-  load_data(url)
-  quit()
-  print(i["player"]["displayName"])
-  print(i["player"]["country"])
+# -----------------------------
+# SAVE BASE CSV (IDs ONLY)
+# -----------------------------
+players_df = pd.DataFrame({"player_id": player_ids})
+players_df["player_id"] = players_df["player_id"].astype(str)
 
-quit()
+players_df.to_csv("players.csv", index=False)
 
-def load_data(URL,y):
-  driver.get(URL)
-  table = driver.find_element(By.CSS_SELECTOR, "table.chakra-table")
-  assert table, "table not found"
-  df = pd.read_html(driver.find_element(By.CSS_SELECTOR, "table.chakra-table").get_attribute('outerHTML'))[0]
-  df = df.drop(df.columns[12:], axis=1)
-  df2 = df.loc[:,"Unnamed: 2_level_0"]
-  upload_data(df2,y)
+print(f"Saved {len(players_df)} player IDs")
 
-def upload_data(players,b):
-  existing_players = []
-  mycursor.execute('SELECT CONCAT(first_name," ",last_name) FROM Masters_Players') 
-  captured_players = mycursor.fetchall() 
-  for x in captured_players:
-    existing_players.append(x[0])
-  
-  y = 0
+# -----------------------------
+# STEP 2: BIO SCRAPER (NEXT.JS JSON)
+# -----------------------------
+def scrape_bio(player_id, session=None):
+    url = f"https://www.pgatour.com/player/{player_id}"
 
-  for i in players['Player']:
-    if type(i) == str:
-      if len(i.split()) <= 4:
-        i = i.replace("(a)","")
-        if i not in existing_players:
-          try:
+    try:
+        html = requests.get(url, timeout=15).text
+        soup = BeautifulSoup(html, "html.parser")
 
-            param1 =  i.split(" ", 1)[0]
-            param2 = i.split(" ", 1)[1]
+        script = soup.find("script", {"id": "__NEXT_DATA__"})
+        if not script:
+            return {}
 
-            cursor = mydb.cursor()
-            cursor.execute("""INSERT INTO Masters_Players (first_name,last_name) VALUES (%s,%s)""", (param1, param2))
-            mydb.commit()
-            print(cursor.rowcount, "Record inserted successfully into Laptop table")
-            cursor.close()
-            y += 1
-          except mysql.connector.Error as error:
-            print("Failed to insert record into Laptop table {}".format(error))
-  print("Total players added:",y,"Year:",b)
+        data = json.loads(script.string)
 
-#These are the two variables we neeed to change
-start_year = (2014)
-end_year = (2024)
+        queries = data["props"]["pageProps"]["dehydratedState"]["queries"]
 
-url = ""
+        bio_raw = None
 
-for a in range(start_year,end_year+1):
-  url = f"https://www.pgatour.com/tournaments/2022/masters-tournament/R{a}014/leaderboard" 
-  load_data(url,a)
+        for q in queries:
+            if q["queryKey"][0] == "playerProfileOverview":
+                bio_raw = q["state"]["data"]["summaryData"]["summaryData"]
+                break
 
+        if not bio_raw:
+            return {}
 
+        return {
+            "player_id": player_id,
+            "first_name": bio_raw.get("firstName"),
+            "last_name": bio_raw.get("lastName"),
+            "country": bio_raw.get("country"),
+            "age": bio_raw.get("age"),
+            "born": bio_raw.get("born"),
+            "turned_pro": bio_raw.get("turnedPro"),
+            "college": bio_raw.get("college"),
+            "birthplace": bio_raw.get("birthplace"),
+        }
 
+    except Exception as e:
+        print(f"Error scraping {player_id}: {e}")
+        return {}
 
+# -----------------------------
+# STEP 3: SCRAPE ALL BIOS
+# -----------------------------
+df = pd.read_csv("players.csv", dtype={"player_id": str})
+player_ids = df["player_id"].astype(str).tolist()
 
+rows = []
 
-# We needed to remove NaN values, where adverts or gaps appear in the tables. Then remove any 'names' larger than 4 words long as we were capturing a message about the cut. 
-# Finally we want to remove the marker for amateur from the surname
+for i, pid in enumerate(player_ids):
+    print(f"Scraping {i+1}/{len(player_ids)}: {pid}")
 
+    bio = scrape_bio(pid)
 
+    if bio:
+        rows.append(bio)
 
+    time.sleep(0.5)  # avoid hammering site
 
+bio_df = pd.DataFrame(rows)
 
+print(f"Scraped {len(bio_df)} bios")
 
+# -----------------------------
+# STEP 4: MERGE BACK INTO CSV
+# -----------------------------
+players_df = pd.read_csv("players.csv")
 
+players_df["player_id"] = players_df["player_id"].astype(str)
+bio_df["player_id"] = bio_df["player_id"].astype(str)
 
+merged = players_df.merge(bio_df, on="player_id", how="left")
+
+merged.to_csv("players.csv", index=False)
+
+print("Updated players.csv with bio data")
+
+# -----------------------------
+# DONE
+# -----------------------------
