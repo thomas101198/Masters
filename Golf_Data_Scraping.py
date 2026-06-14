@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # -----------------------------
 # CONFIG
@@ -62,11 +63,13 @@ print(f"Saved {len(players_df)} player IDs")
 # -----------------------------
 # STEP 2: BIO SCRAPER (NEXT.JS JSON)
 # -----------------------------
-def scrape_bio(player_id, session=None):
+session = requests.Session()
+
+def scrape_bio(player_id, session=session):
     url = f"https://www.pgatour.com/player/{player_id}"
 
     try:
-        html = requests.get(url, timeout=15).text
+        html = session.get(url, timeout=15).text
         soup = BeautifulSoup(html, "html.parser")
 
         script = soup.find("script", {"id": "__NEXT_DATA__"})
@@ -104,22 +107,22 @@ def scrape_bio(player_id, session=None):
         return {}
 
 # -----------------------------
-# STEP 3: SCRAPE ALL BIOS
+# STEP 3: SCRAPE ALL BIOS (CONCURRENT)
 # -----------------------------
 df = pd.read_csv("players.csv", dtype={"player_id": str})
 player_ids = df["player_id"].astype(str).tolist()
 
 rows = []
 
-for i, pid in enumerate(player_ids):
-    print(f"Scraping {i+1}/{len(player_ids)}: {pid}")
+print(f"Scraping {len(player_ids)} players concurrently...")
 
-    bio = scrape_bio(pid)
+with ThreadPoolExecutor(max_workers=10) as executor:
+    futures = {executor.submit(scrape_bio, pid): pid for pid in player_ids}
 
-    if bio:
-        rows.append(bio)
-
-    time.sleep(0.5)  # avoid hammering site
+    for i, future in enumerate(as_completed(futures), start=1):
+        result = future.result()
+        if result:
+            rows.append(result)
 
 bio_df = pd.DataFrame(rows)
 
@@ -128,10 +131,10 @@ print(f"Scraped {len(bio_df)} bios")
 # -----------------------------
 # STEP 4: MERGE BACK INTO CSV
 # -----------------------------
-players_df = pd.read_csv("players.csv")
+players_df = pd.read_csv("players.csv", dtype={"player_id": str})
 
-players_df["player_id"] = players_df["player_id"].astype(str)
-bio_df["player_id"] = bio_df["player_id"].astype(str)
+players_df["player_id"] = players_df["player_id"].str.zfill(5)
+bio_df["player_id"] = bio_df["player_id"].astype(str).str.zfill(5)
 
 merged = players_df.merge(bio_df, on="player_id", how="left")
 
