@@ -4,6 +4,15 @@ from bs4 import BeautifulSoup
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import boto3
+
+# -----------------------------
+# SET UP FUNCTION TO UPLOAD TO S3
+# -----------------------------
+def upload_to_s3(local_path, bucket, s3_path):
+    s3 = boto3.client("s3")
+    s3.upload_file(local_path, bucket, s3_path)
+    print(f"Uploaded to s3://{bucket}/{s3_path}")
 
 # -----------------------------
 # CONFIG
@@ -143,5 +152,16 @@ merged.to_csv("players.csv", index=False)
 print("Updated players.csv with bio data")
 
 # -----------------------------
-# DONE
+# SAVE AS PARQUET
 # -----------------------------
+parquet_path = f"players_{YEAR}.parquet"
+merged.to_parquet(parquet_path, index=False)
+print(f"Saved Parquet file: {parquet_path}")
+
+# -----------------------------
+# UPLOAD TO S3
+# -----------------------------
+bucket_name = "masters-data-tl"
+s3_key = f"players/year={YEAR}/players_{YEAR}.parquet"
+
+upload_to_s3(parquet_path, bucket_name, s3_key)
