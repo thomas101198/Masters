@@ -20,6 +20,7 @@ def upload_to_s3(local_path, bucket, s3_path):
 X_API_KEY = "da2-gsrx5bibzbb4njvhl7t37wqyl4"
 
 YEAR = 20230
+SHORT_YEAR = int(str(YEAR)[:4])
 PAST_RESULTS_ID = "R2014014"
 
 # -----------------------------
@@ -162,6 +163,6 @@ print(f"Saved Parquet file: {parquet_path}")
 # UPLOAD TO S3
 # -----------------------------
 bucket_name = "masters-data-tl"
-s3_key = f"players/year={YEAR}/players_{YEAR}.parquet"
+s3_key = f"raw/players/players_{SHORT_YEAR}.parquet"
 
 upload_to_s3(parquet_path, bucket_name, s3_key)
